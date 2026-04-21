@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Button } from "@/components/ui/button";
 
 export default function Home() {
@@ -26,10 +28,21 @@ export default function Home() {
 
         {/* CTAs */}
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Button size="lg" className="text-base px-8">
+          <Button
+            size="lg"
+            className="text-base px-8"
+            nativeButton={false}
+            render={<Link href="/login" />}
+          >
             Я креативщик
           </Button>
-          <Button size="lg" variant="outline" className="text-base px-8">
+          <Button
+            size="lg"
+            variant="outline"
+            className="text-base px-8"
+            nativeButton={false}
+            render={<Link href="/login" />}
+          >
             Я рекламодатель
           </Button>
         </div>
