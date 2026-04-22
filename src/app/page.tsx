@@ -26,25 +26,25 @@ export default function Home() {
           </p>
         </div>
 
-        {/* CTAs */}
-        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+        {/* CTA */}
+        <div className="space-y-3">
           <Button
             size="lg"
-            className="text-base px-8"
+            className="text-base px-10"
             nativeButton={false}
             render={<Link href="/login" />}
           >
-            Я креативщик
+            Начать
           </Button>
-          <Button
-            size="lg"
-            variant="outline"
-            className="text-base px-8"
-            nativeButton={false}
-            render={<Link href="/login" />}
-          >
-            Я рекламодатель
-          </Button>
+          <div className="text-sm text-muted-foreground">
+            Уже есть аккаунт?{" "}
+            <Link
+              href="/login"
+              className="text-foreground/90 underline underline-offset-4 hover:text-primary"
+            >
+              Войти
+            </Link>
+          </div>
         </div>
 
         {/* Key features */}
