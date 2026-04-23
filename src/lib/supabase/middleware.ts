@@ -6,7 +6,15 @@ import {
 } from "next/server";
 import type { User } from "@supabase/supabase-js";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/onboarding", "/settings"];
+const PROTECTED_PREFIXES = ["/dashboard", "/onboarding", "/settings", "/offers"];
+
+const ADVERTISER_ONLY_PATHS = ["/offers/new"];
+
+function isAdvertiserOnly(pathname: string): boolean {
+  return ADVERTISER_ONLY_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
+}
 
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(
@@ -109,6 +117,21 @@ export async function updateSession(request: NextRequest) {
       redirectResponse.cookies.set(cookie);
     }
     return redirectResponse;
+  }
+
+  // Advertiser-only paths: non-advertisers get redirected with an error param.
+  if (isAdvertiserOnly(request.nextUrl.pathname)) {
+    const role = user?.user_metadata?.role;
+    if (role !== "advertiser") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/dashboard";
+      url.searchParams.set("error", "advertiser_only");
+      const redirect = NextResponse.redirect(url);
+      for (const cookie of supabaseResponse.cookies.getAll()) {
+        redirect.cookies.set(cookie);
+      }
+      return redirect;
+    }
   }
 
   return supabaseResponse;

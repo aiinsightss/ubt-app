@@ -1,6 +1,9 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowRight, Settings } from "lucide-react";
+
+import { DashboardErrorToast } from "./error-toast";
 
 import { LogoutButton } from "@/components/logout-button";
 import { Button } from "@/components/ui/button";
@@ -62,6 +65,9 @@ export default async function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-background px-4 py-10 sm:py-12">
+      <Suspense fallback={null}>
+        <DashboardErrorToast />
+      </Suspense>
       <div className="mx-auto w-full max-w-3xl space-y-10">
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">

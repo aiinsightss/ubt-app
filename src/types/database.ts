@@ -5,6 +5,7 @@ export type UserRole = "creator" | "advertiser" | "admin";
 export type Platform = "tiktok" | "instagram" | "youtube";
 export type VerticalityTier = "white" | "grey" | "black";
 export type PayoutType = "cpm" | "cpa" | "hybrid";
+export type PayoutMode = "flat" | "tiered";
 export type OfferStatus = "draft" | "active" | "paused" | "ended";
 export type SubmissionStatus = "pending" | "approved" | "rejected" | "paid";
 export type ConversionStatus = "pending" | "approved" | "rejected";
@@ -94,6 +95,16 @@ export interface SocialAccount {
   created_at: string;
 }
 
+export interface OfferPayoutTier {
+  id: string;
+  offer_id: string;
+  tier_level: number;
+  min_views_threshold: number;
+  cpm_rate: string;
+  cpa_rate: string;
+  created_at: string;
+}
+
 export interface Offer {
   id: string;
   advertiser_id: string;
@@ -102,6 +113,7 @@ export interface Offer {
   vertical: string;
   verticality_tier: VerticalityTier;
   payout_type: PayoutType;
+  payout_mode: PayoutMode;
   cpm_rate: string;
   cpa_rate: string;
   budget_total: string;
@@ -139,6 +151,7 @@ export interface Submission {
   total_deposits_sum: string;
   earnings_cpm: string;
   earnings_cpa: string;
+  current_tier_level: number | null;
   status: SubmissionStatus;
   rejection_reason: string | null;
   subaccount_token: string;
