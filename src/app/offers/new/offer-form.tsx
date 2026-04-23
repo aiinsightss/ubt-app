@@ -93,9 +93,7 @@ const DEFAULT_TIERS: TierRow[] = [
   { tier_level: 3, min_views_threshold: "500000", cpm_rate: "0.10", cpa_rate: "10" },
 ];
 
-const TOUCH_DELAY = 600;
-
-// ─── Pure helpers (defined outside component) ─────────────────────────────────
+// ─── Pure helpers ──────────────────────────────────────────────────────────────
 
 function isValidUrl(url: string): boolean {
   try {
@@ -143,48 +141,43 @@ function validateForm(
   const errors: FormErrors = {};
 
   const t = title.trim();
-  if (t.length < 3) errors.title = "Минимум 3 символа";
-  else if (t.length > 100) errors.title = "Максимум 100 символов";
+  if (t.length < 3 || t.length > 100)
+    errors.title = "Название должно быть от 3 до 100 символов";
 
-  if (description.length > 500) errors.description = "Максимум 500 символов";
+  if (description.length > 500)
+    errors.description = "Максимум 500 символов";
 
   if (payoutMode === "flat") {
     if (payoutType === "cpm") {
       const r = parseFloat(cpmRate);
       if (!cpmRate || isNaN(r) || r < 0.1 || r > 100)
-        errors.cpm_rate = "От 0.1 до 100 USDT";
+        errors.cpm_rate = "Ставка должна быть больше 0";
     } else {
       const r = parseFloat(cpaRate);
       if (!cpaRate || isNaN(r) || r < 1 || r > 10000)
-        errors.cpa_rate = "От 1 до 10 000 USDT";
+        errors.cpa_rate = "Ставка должна быть больше 0";
     }
   }
 
   if (payoutType === "cpa") {
-    if (!cpaLink.trim()) {
-      errors.cpa_link_template = "Введи партнёрскую ссылку";
-    } else if (!cpaLink.includes("{subid}")) {
-      errors.cpa_link_template = "Ссылка должна содержать {subid}";
-    } else if (!isValidUrl(cpaLink)) {
-      errors.cpa_link_template = "Введи корректный URL с {subid}";
-    }
+    if (!cpaLink.trim() || !cpaLink.includes("{subid}") || !isValidUrl(cpaLink))
+      errors.cpa_link_template = "Ссылка должна быть валидным URL и содержать {subid}";
   }
 
   if (!vertical) errors.vertical = "Выбери вертикаль";
   if (!verticality_tier) errors.verticality_tier = "Выбери тип вертикали";
 
   const b = parseFloat(budget);
-  if (!budget || isNaN(b) || b < 50) errors.budget_total = "Минимум 50 USDT";
+  if (!budget || isNaN(b) || b < 50)
+    errors.budget_total = "Минимум 50 USDT";
 
-  if (rules.length > 2000) errors.rules = "Максимум 2000 символов";
+  if (rules.length > 2000)
+    errors.rules = "Максимум 2000 символов";
 
   return errors;
 }
 
-function validateTiers(
-  tiers: TierRow[],
-  payoutType: PayoutType,
-): TierErrors[] {
+function validateTiers(tiers: TierRow[], payoutType: PayoutType): TierErrors[] {
   return tiers.map((t, i) => {
     const errs: TierErrors = {};
 
@@ -194,17 +187,17 @@ function validateTiers(
     } else if (i > 0) {
       const prev = parseInt(tiers[i - 1].min_views_threshold, 10);
       if (!isNaN(prev) && threshold <= prev)
-        errs.min_views_threshold = "Должно быть строго больше предыдущего";
+        errs.min_views_threshold = "Порог должен быть больше чем у предыдущего тира";
     }
 
     if (payoutType === "cpm") {
       const r = parseFloat(t.cpm_rate);
       if (!t.cpm_rate || isNaN(r) || r <= 0)
-        errs.cpm_rate = "Ставка должна быть > 0";
+        errs.cpm_rate = "Ставка должна быть больше 0";
     } else {
       const r = parseFloat(t.cpa_rate);
       if (!t.cpa_rate || isNaN(r) || r <= 0)
-        errs.cpa_rate = "Ставка должна быть > 0";
+        errs.cpa_rate = "Ставка должна быть больше 0";
     }
 
     return errs;
@@ -228,12 +221,11 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
   const [cpmRate, setCpmRate] = useState("");
   const [cpaRate, setCpaRate] = useState("");
 
-  // CPA link (for any CPA offer)
+  // CPA link
   const [cpaLink, setCpaLink] = useState("");
 
   // Tiered mode
   const [tiers, setTiers] = useState<TierRow[]>(DEFAULT_TIERS);
-  const [tierErrors, setTierErrors] = useState<TierErrors[]>([]);
 
   // Category / budget / geo / rules
   const [vertical, setVertical] = useState("");
@@ -242,10 +234,11 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
   const [geo, setGeo] = useState("");
   const [rules, setRules] = useState("");
 
-  // Touched fields (debounced) + submit flag
-  const [touched, setTouched] = useState<Partial<Record<keyof FormErrors, boolean>>>({});
+  // Which fields the user has blurred (with a non-empty value at blur time)
+  const [blurred, setBlurred] = useState<Partial<Record<keyof FormErrors, boolean>>>({});
+  // Which tier fields the user has blurred — key: "${index}-${field}"
+  const [tierBlurred, setTierBlurred] = useState<Record<string, boolean>>({});
   const [hasSubmitted, setHasSubmitted] = useState(false);
-  const debounceTimers = useRef<Partial<Record<keyof FormErrors, ReturnType<typeof setTimeout>>>>({});
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -261,6 +254,11 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
         vertical, verticality_tier, budget, rules,
       ),
     [title, description, payoutType, payoutMode, cpmRate, cpaRate, cpaLink, vertical, verticality_tier, budget, rules],
+  );
+
+  const computedTierErrors = useMemo(
+    () => validateTiers(tiers, payoutType),
+    [tiers, payoutType],
   );
 
   const isValid = useMemo(() => {
@@ -292,45 +290,66 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
     cpmRate, cpaRate, cpaLink, tiers,
   ]);
 
-  // ── Touch helpers ────────────────────────────────────────────────────────────
+  // ── Blur / error-display helpers ─────────────────────────────────────────────
 
-  function touch(field: keyof FormErrors) {
-    clearTimeout(debounceTimers.current[field]);
-    debounceTimers.current[field] = setTimeout(() => {
-      setTouched((prev) => ({ ...prev, [field]: true }));
-    }, TOUCH_DELAY);
+  function markBlurred(field: keyof FormErrors, value: string) {
+    // Only register a blur if the user actually typed something
+    if (value.trim() !== "") {
+      setBlurred((prev) => ({ ...prev, [field]: true }));
+    }
   }
 
-  function touchNow(field: keyof FormErrors) {
-    clearTimeout(debounceTimers.current[field]);
-    setTouched((prev) => ({ ...prev, [field]: true }));
+  function markTierBlurred(
+    index: number,
+    field: "min_views_threshold" | "cpm_rate" | "cpa_rate",
+    value: string,
+  ) {
+    if (value.trim() !== "") {
+      setTierBlurred((prev) => ({ ...prev, [`${index}-${field}`]: true }));
+    }
   }
 
-  function clearTouch(...fields: (keyof FormErrors)[]) {
-    setTouched((prev) => {
-      const next = { ...prev };
-      for (const f of fields) delete next[f];
-      return next;
-    });
-    for (const f of fields) clearTimeout(debounceTimers.current[f]);
+  // Returns the error message to display for a form field.
+  // Shows when: submit was attempted OR (field was blurred AND currently non-empty).
+  function showError(field: keyof FormErrors, currentValue: string): string | undefined {
+    const visible = hasSubmitted || (!!blurred[field] && currentValue.trim() !== "");
+    return visible ? formErrors[field] : undefined;
   }
 
-  function showError(field: keyof FormErrors): string | undefined {
-    return hasSubmitted || touched[field] ? formErrors[field] : undefined;
+  // Returns the error message to display for a tier field.
+  function showTierError(
+    index: number,
+    field: "min_views_threshold" | "cpm_rate" | "cpa_rate",
+    currentValue: string,
+  ): string | undefined {
+    const visible =
+      hasSubmitted || (!!tierBlurred[`${index}-${field}`] && currentValue.trim() !== "");
+    return visible ? computedTierErrors[index]?.[field] : undefined;
   }
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
   function handlePayoutTypeChange(v: string) {
     setPayoutType(v as PayoutType);
-    clearTouch("cpm_rate", "cpa_rate", "cpa_link_template");
-    setTierErrors([]);
+    setBlurred((prev) => {
+      const next = { ...prev };
+      delete next.cpm_rate;
+      delete next.cpa_rate;
+      delete next.cpa_link_template;
+      return next;
+    });
+    setTierBlurred({});
   }
 
   function handlePayoutModeChange(v: string) {
     setPayoutMode(v as PayoutMode);
-    clearTouch("cpm_rate", "cpa_rate");
-    setTierErrors([]);
+    setBlurred((prev) => {
+      const next = { ...prev };
+      delete next.cpm_rate;
+      delete next.cpa_rate;
+      return next;
+    });
+    setTierBlurred({});
   }
 
   function updateTier(
@@ -341,14 +360,6 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
     setTiers((prev) =>
       prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)),
     );
-    setTierErrors((prev) => {
-      if (!prev[index]?.[field]) return prev;
-      const next = [...prev];
-      const updated = { ...next[index] };
-      delete updated[field];
-      next[index] = updated;
-      return next;
-    });
   }
 
   function addTier() {
@@ -370,7 +381,18 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
         .filter((_, i) => i !== index)
         .map((t, i) => ({ ...t, tier_level: i + 1 })),
     );
-    setTierErrors((prev) => prev.filter((_, i) => i !== index));
+    // Drop blur state for the removed tier and re-index those above it
+    setTierBlurred((prev) => {
+      const next: Record<string, boolean> = {};
+      for (const [key, val] of Object.entries(prev)) {
+        const [idxStr, field] = key.split("-");
+        const idx = parseInt(idxStr, 10);
+        if (idx === index) continue;
+        const newIdx = idx > index ? idx - 1 : idx;
+        next[`${newIdx}-${field}`] = val;
+      }
+      return next;
+    });
   }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -378,9 +400,9 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
     setHasSubmitted(true);
 
     if (payoutMode === "tiered") {
-      const tErrs = validateTiers(tiers, payoutType);
-      const hasTierErrs = tErrs.some((e) => Object.keys(e).length > 0);
-      setTierErrors(tErrs);
+      const hasTierErrs = computedTierErrors.some(
+        (e) => Object.keys(e).length > 0,
+      );
       if (hasTierErrs || Object.keys(formErrors).length > 0) return;
     } else {
       if (Object.keys(formErrors).length > 0) return;
@@ -399,13 +421,9 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
       payout_type: payoutType,
       payout_mode: payoutMode,
       cpm_rate:
-        payoutMode === "flat" && payoutType === "cpm"
-          ? parseFloat(cpmRate)
-          : 0,
+        payoutMode === "flat" && payoutType === "cpm" ? parseFloat(cpmRate) : 0,
       cpa_rate:
-        payoutMode === "flat" && payoutType === "cpa"
-          ? parseFloat(cpaRate)
-          : 0,
+        payoutMode === "flat" && payoutType === "cpa" ? parseFloat(cpaRate) : 0,
       tiers:
         payoutMode === "tiered"
           ? tiers.map((t) => ({
@@ -474,16 +492,14 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
                 ref={titleRef}
                 id="title"
                 value={title}
-                onChange={(e) => {
-                  setTitle(e.target.value);
-                  touch("title");
-                }}
+                onChange={(e) => setTitle(e.target.value)}
+                onBlur={(e) => markBlurred("title", e.target.value)}
                 placeholder="Например: Казино 1xBet — регистрация"
                 maxLength={100}
-                aria-invalid={!!showError("title")}
+                aria-invalid={!!showError("title", title)}
               />
-              {showError("title") && (
-                <FieldError message={showError("title")!} />
+              {showError("title", title) && (
+                <FieldError message={showError("title", title)!} />
               )}
             </div>
 
@@ -492,17 +508,15 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
               <Textarea
                 id="description"
                 value={description}
-                onChange={(e) => {
-                  setDescription(e.target.value);
-                  touch("description");
-                }}
+                onChange={(e) => setDescription(e.target.value)}
+                onBlur={(e) => markBlurred("description", e.target.value)}
                 placeholder="Коротко расскажи об оффере"
                 maxLength={500}
                 rows={3}
-                aria-invalid={!!showError("description")}
+                aria-invalid={!!showError("description", description)}
               />
-              {showError("description") && (
-                <FieldError message={showError("description")!} />
+              {showError("description", description) && (
+                <FieldError message={showError("description", description)!} />
               )}
             </div>
           </section>
@@ -620,20 +634,18 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
                             min="0.1"
                             max="100"
                             value={cpmRate}
-                            onChange={(e) => {
-                              setCpmRate(e.target.value);
-                              touch("cpm_rate");
-                            }}
+                            onChange={(e) => setCpmRate(e.target.value)}
+                            onBlur={(e) => markBlurred("cpm_rate", e.target.value)}
                             placeholder="2.5"
                             className="w-36"
-                            aria-invalid={!!showError("cpm_rate")}
+                            aria-invalid={!!showError("cpm_rate", cpmRate)}
                           />
                           <span className="text-sm text-muted-foreground">
                             USDT за 1000 просмотров
                           </span>
                         </div>
-                        {showError("cpm_rate") && (
-                          <FieldError message={showError("cpm_rate")!} />
+                        {showError("cpm_rate", cpmRate) && (
+                          <FieldError message={showError("cpm_rate", cpmRate)!} />
                         )}
                       </motion.div>
                     ) : (
@@ -654,20 +666,18 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
                             min="1"
                             max="10000"
                             value={cpaRate}
-                            onChange={(e) => {
-                              setCpaRate(e.target.value);
-                              touch("cpa_rate");
-                            }}
+                            onChange={(e) => setCpaRate(e.target.value)}
+                            onBlur={(e) => markBlurred("cpa_rate", e.target.value)}
                             placeholder="15"
                             className="w-36"
-                            aria-invalid={!!showError("cpa_rate")}
+                            aria-invalid={!!showError("cpa_rate", cpaRate)}
                           />
                           <span className="text-sm text-muted-foreground">
                             USDT за одно действие
                           </span>
                         </div>
-                        {showError("cpa_rate") && (
-                          <FieldError message={showError("cpa_rate")!} />
+                        {showError("cpa_rate", cpaRate) && (
+                          <FieldError message={showError("cpa_rate", cpaRate)!} />
                         )}
                       </motion.div>
                     )}
@@ -688,10 +698,12 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
                       tier={tier}
                       index={i}
                       payoutType={payoutType}
-                      errors={tierErrors[i]}
-                      showErrors={hasSubmitted}
                       onUpdate={updateTier}
                       onRemove={removeTier}
+                      onBlur={markTierBlurred}
+                      showFieldError={(field, value) =>
+                        showTierError(i, field, value)
+                      }
                     />
                   ))}
 
@@ -741,12 +753,10 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
                       id="cpa_link"
                       type="url"
                       value={cpaLink}
-                      onChange={(e) => {
-                        setCpaLink(e.target.value);
-                        touch("cpa_link_template");
-                      }}
+                      onChange={(e) => setCpaLink(e.target.value)}
+                      onBlur={(e) => markBlurred("cpa_link_template", e.target.value)}
                       placeholder="https://partner.com/?ref=123&subid={subid}"
-                      aria-invalid={!!showError("cpa_link_template")}
+                      aria-invalid={!!showError("cpa_link_template", cpaLink)}
                     />
                     <p className="text-xs text-muted-foreground">
                       Используй{" "}
@@ -755,8 +765,8 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
                       </code>{" "}
                       — мы подставим уникальный токен для каждого креативщика
                     </p>
-                    {showError("cpa_link_template") && (
-                      <FieldError message={showError("cpa_link_template")!} />
+                    {showError("cpa_link_template", cpaLink) && (
+                      <FieldError message={showError("cpa_link_template", cpaLink)!} />
                     )}
                   </div>
                 </section>
@@ -778,10 +788,7 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
                 <Select
                   value={vertical || null}
                   onValueChange={(v) => {
-                    if (v) {
-                      setVertical(v);
-                      touchNow("vertical");
-                    }
+                    if (v) setVertical(v);
                   }}
                 >
                   <SelectTrigger className="w-full">
@@ -795,8 +802,9 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
                     ))}
                   </SelectContent>
                 </Select>
-                {showError("vertical") && (
-                  <FieldError message={showError("vertical")!} />
+                {/* vertical has no typed value — only show error on submit */}
+                {hasSubmitted && formErrors.vertical && (
+                  <FieldError message={formErrors.vertical} />
                 )}
               </div>
 
@@ -805,10 +813,7 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
                 <Select
                   value={verticality_tier}
                   onValueChange={(v) => {
-                    if (v) {
-                      setVerticality_tier(v);
-                      touchNow("verticality_tier");
-                    }
+                    if (v) setVerticality_tier(v);
                   }}
                 >
                   <SelectTrigger className="w-full">
@@ -822,8 +827,8 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
                     <SelectItem value="black">Чёрная вертикаль</SelectItem>
                   </SelectContent>
                 </Select>
-                {showError("verticality_tier") && (
-                  <FieldError message={showError("verticality_tier")!} />
+                {hasSubmitted && formErrors.verticality_tier && (
+                  <FieldError message={formErrors.verticality_tier} />
                 )}
               </div>
             </div>
@@ -846,21 +851,19 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
                   step="10"
                   min="50"
                   value={budget}
-                  onChange={(e) => {
-                    setBudget(e.target.value);
-                    touch("budget_total");
-                  }}
+                  onChange={(e) => setBudget(e.target.value)}
+                  onBlur={(e) => markBlurred("budget_total", e.target.value)}
                   placeholder="500"
                   className="w-36"
-                  aria-invalid={!!showError("budget_total")}
+                  aria-invalid={!!showError("budget_total", budget)}
                 />
                 <span className="text-sm text-muted-foreground">USDT</span>
               </div>
               <p className="text-xs text-muted-foreground">
                 Минимум 50 USDT. Кампания остановится, когда бюджет исчерпан.
               </p>
-              {showError("budget_total") && (
-                <FieldError message={showError("budget_total")!} />
+              {showError("budget_total", budget) && (
+                <FieldError message={showError("budget_total", budget)!} />
               )}
             </div>
           </section>
@@ -900,23 +903,21 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
               <Textarea
                 id="rules"
                 value={rules}
-                onChange={(e) => {
-                  setRules(e.target.value);
-                  touch("rules");
-                }}
+                onChange={(e) => setRules(e.target.value)}
+                onBlur={(e) => markBlurred("rules", e.target.value)}
                 placeholder="Требования к роликам: длительность, упоминания, запрещённые темы"
                 maxLength={2000}
                 rows={4}
-                aria-invalid={!!showError("rules")}
+                aria-invalid={!!showError("rules", rules)}
               />
-              {showError("rules") && (
-                <FieldError message={showError("rules")!} />
+              {showError("rules", rules) && (
+                <FieldError message={showError("rules", rules)!} />
               )}
             </div>
           </section>
 
           {/* ── Submit ────────────────────────────────────────────────────────── */}
-          <div className="space-y-3 pt-2">
+          <div className="space-y-2 pt-2">
             <Button
               type="submit"
               size="lg"
@@ -936,7 +937,9 @@ export function OfferForm({ profile: _ }: { profile: FormProfile }) {
               )}
             </Button>
             <p className="text-center text-xs text-muted-foreground">
-              После публикации оффер сразу станет виден креативщикам
+              {isValid
+                ? "После публикации оффер сразу станет виден креативщикам"
+                : "Заполните все обязательные поля, чтобы опубликовать"}
             </p>
           </div>
         </form>
@@ -971,8 +974,8 @@ function SectionHeading({
 
 function FieldError({ message }: { message: string }) {
   return (
-    <p className="flex items-center gap-1.5 text-xs text-destructive">
-      <AlertCircle className="size-3 shrink-0" />
+    <p className="mt-1 flex items-center gap-1.5 text-sm text-red-400">
+      <AlertCircle className="size-3.5 shrink-0" />
       {message}
     </p>
   );
@@ -982,27 +985,35 @@ function TierCard({
   tier,
   index,
   payoutType,
-  errors,
-  showErrors,
   onUpdate,
   onRemove,
+  onBlur,
+  showFieldError,
 }: {
   tier: TierRow;
   index: number;
   payoutType: PayoutType;
-  errors: TierErrors | undefined;
-  showErrors: boolean;
   onUpdate: (
     index: number,
     field: "min_views_threshold" | "cpm_rate" | "cpa_rate",
     value: string,
   ) => void;
   onRemove: (index: number) => void;
+  onBlur: (
+    index: number,
+    field: "min_views_threshold" | "cpm_rate" | "cpa_rate",
+    value: string,
+  ) => void;
+  showFieldError: (
+    field: "min_views_threshold" | "cpm_rate" | "cpa_rate",
+    value: string,
+  ) => string | undefined;
 }) {
   const rateField = payoutType === "cpm" ? "cpm_rate" : "cpa_rate";
   const rateValue = payoutType === "cpm" ? tier.cpm_rate : tier.cpa_rate;
-  const rateError =
-    payoutType === "cpm" ? errors?.cpm_rate : errors?.cpa_rate;
+
+  const thresholdError = showFieldError("min_views_threshold", tier.min_views_threshold);
+  const rateError = showFieldError(rateField, rateValue);
 
   return (
     <div className="rounded-xl border border-border bg-card/50 p-4">
@@ -1030,15 +1041,12 @@ function TierCard({
             min="0"
             step="1000"
             value={tier.min_views_threshold}
-            onChange={(e) =>
-              onUpdate(index, "min_views_threshold", e.target.value)
-            }
+            onChange={(e) => onUpdate(index, "min_views_threshold", e.target.value)}
+            onBlur={(e) => onBlur(index, "min_views_threshold", e.target.value)}
             placeholder={index === 0 ? "0 (опционально)" : "100000"}
-            aria-invalid={showErrors && !!errors?.min_views_threshold}
+            aria-invalid={!!thresholdError}
           />
-          {showErrors && errors?.min_views_threshold && (
-            <FieldError message={errors.min_views_threshold} />
-          )}
+          {thresholdError && <FieldError message={thresholdError} />}
         </div>
 
         <div className="space-y-1">
@@ -1051,13 +1059,14 @@ function TierCard({
             step={payoutType === "cpm" ? "0.01" : "1"}
             value={rateValue}
             onChange={(e) => onUpdate(index, rateField, e.target.value)}
+            onBlur={(e) => onBlur(index, rateField, e.target.value)}
             placeholder={payoutType === "cpm" ? "0.07" : "7"}
-            aria-invalid={showErrors && !!rateError}
+            aria-invalid={!!rateError}
           />
           <p className="text-[11px] text-muted-foreground">
             {payoutType === "cpm" ? "USDT / 1000 просмотров" : "USDT / действие"}
           </p>
-          {showErrors && rateError && <FieldError message={rateError} />}
+          {rateError && <FieldError message={rateError} />}
         </div>
       </div>
     </div>
@@ -1073,9 +1082,7 @@ function PreviewExample({
 }) {
   const validTiers = tiers.filter((t) => {
     const threshold = parseInt(t.min_views_threshold, 10);
-    const rate = parseFloat(
-      payoutType === "cpm" ? t.cpm_rate : t.cpa_rate,
-    );
+    const rate = parseFloat(payoutType === "cpm" ? t.cpm_rate : t.cpa_rate);
     return !isNaN(threshold) && threshold >= 0 && !isNaN(rate) && rate > 0;
   });
 
@@ -1088,10 +1095,7 @@ function PreviewExample({
     ? Math.round((threshold2 + parseInt(t3.min_views_threshold, 10)) / 2)
     : threshold2 * 3;
 
-  // Find the active tier for exampleViews
-  let activeRate = parseFloat(
-    payoutType === "cpm" ? t2.cpm_rate : t2.cpa_rate,
-  );
+  let activeRate = parseFloat(payoutType === "cpm" ? t2.cpm_rate : t2.cpa_rate);
   let activeTierLevel = t2.tier_level;
   for (const t of validTiers) {
     const thr = parseInt(t.min_views_threshold, 10);
