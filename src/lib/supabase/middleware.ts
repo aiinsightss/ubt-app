@@ -8,12 +8,12 @@ import type { User } from "@supabase/supabase-js";
 
 const PROTECTED_PREFIXES = ["/dashboard", "/onboarding", "/settings", "/offers"];
 
-const ADVERTISER_ONLY_PATHS = ["/offers/new"];
-
 function isAdvertiserOnly(pathname: string): boolean {
-  return ADVERTISER_ONLY_PATHS.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
-  );
+  return pathname === "/offers/new" || pathname.startsWith("/offers/new/");
+}
+
+function isCreatorOnly(pathname: string): boolean {
+  return pathname === "/offers" || pathname === "/offers/";
 }
 
 function isProtected(pathname: string): boolean {
@@ -119,19 +119,31 @@ export async function updateSession(request: NextRequest) {
     return redirectResponse;
   }
 
-  // Advertiser-only paths: non-advertisers get redirected with an error param.
-  if (isAdvertiserOnly(request.nextUrl.pathname)) {
-    const role = user?.user_metadata?.role;
-    if (role !== "advertiser") {
-      const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
-      url.searchParams.set("error", "advertiser_only");
-      const redirect = NextResponse.redirect(url);
-      for (const cookie of supabaseResponse.cookies.getAll()) {
-        redirect.cookies.set(cookie);
-      }
-      return redirect;
+  // Role-gated paths: non-matching roles get redirected with an error param.
+  // Check advertiser-only first so /offers/new never falls into creator-only.
+  const pathname = request.nextUrl.pathname;
+  const role = user?.user_metadata?.role;
+
+  if (isAdvertiserOnly(pathname) && role !== "advertiser") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
+    url.searchParams.set("error", "advertiser_only");
+    const redirect = NextResponse.redirect(url);
+    for (const cookie of supabaseResponse.cookies.getAll()) {
+      redirect.cookies.set(cookie);
     }
+    return redirect;
+  }
+
+  if (isCreatorOnly(pathname) && role !== "creator") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
+    url.searchParams.set("error", "creator_only");
+    const redirect = NextResponse.redirect(url);
+    for (const cookie of supabaseResponse.cookies.getAll()) {
+      redirect.cookies.set(cookie);
+    }
+    return redirect;
   }
 
   return supabaseResponse;

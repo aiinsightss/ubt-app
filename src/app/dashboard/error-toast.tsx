@@ -13,6 +13,9 @@ export function DashboardErrorToast() {
     if (error === "advertiser_only") {
       toast.error("Этот раздел доступен только рекламодателям");
       router.replace("/dashboard");
+    } else if (error === "creator_only") {
+      toast.error("Только для креативщиков");
+      router.replace("/dashboard");
     }
   }, [searchParams, router]);
 
